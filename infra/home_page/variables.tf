@@ -1,0 +1,47 @@
+variable "aws_region" {
+  description = "AWS region for S3 and Route 53 resources."
+  type        = string
+  default     = "us-west-2"
+}
+
+variable "domain_name" {
+  description = "Root domain name for the site."
+  type        = string
+  default     = "ilyaraz.org"
+}
+
+variable "bucket_name" {
+  description = "Name of the S3 bucket that stores site content."
+  type        = string
+  default     = "ilyaraz-org-static-site"
+}
+
+variable "price_class" {
+  description = "CloudFront price class."
+  type        = string
+  default     = "PriceClass_100"
+}
+
+variable "github_repo" {
+  description = "GitHub org/repo allowed to deploy the site."
+  type        = string
+  default     = "ilyaraz/home-page"
+}
+
+variable "github_branch" {
+  description = "GitHub branch allowed to deploy the site."
+  type        = string
+  default     = "main"
+}
+
+variable "github_actions_role_name" {
+  description = "Name of the IAM role assumed by GitHub Actions."
+  type        = string
+  default     = "github-actions-home-page"
+}
+
+variable "github_oidc_thumbprint" {
+  description = "Thumbprint for the GitHub Actions OIDC provider."
+  type        = string
+  default     = "6938fd4d98bab03faadb97b34396831e3780aea1"
+}
