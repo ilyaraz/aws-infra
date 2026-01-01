@@ -40,8 +40,20 @@ variable "github_actions_role_name" {
   default     = "github-actions-home-page"
 }
 
-variable "github_oidc_thumbprint" {
-  description = "Thumbprint for the GitHub Actions OIDC provider."
+variable "bootstrap_state_bucket" {
+  description = "S3 bucket holding the bootstrap Terraform state."
   type        = string
-  default     = "6938fd4d98bab03faadb97b34396831e3780aea1"
+  default     = "ilyaraz-aws-infra-tf-state"
+}
+
+variable "bootstrap_state_key" {
+  description = "State file key for the bootstrap Terraform state."
+  type        = string
+  default     = "bootstrap/terraform.tfstate"
+}
+
+variable "bootstrap_state_region" {
+  description = "AWS region for the bootstrap Terraform state bucket."
+  type        = string
+  default     = "us-west-2"
 }

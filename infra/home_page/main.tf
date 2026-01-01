@@ -4,6 +4,20 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
 
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+
+  config = {
+    bucket = var.bootstrap_state_bucket
+    key    = var.bootstrap_state_key
+    region = var.bootstrap_state_region
+  }
+}
+
+data "aws_iam_openid_connect_provider" "github" {
+  arn = data.terraform_remote_state.bootstrap.outputs.github_oidc_provider_arn
+}
+
 resource "aws_route53_zone" "primary" {
   name = var.domain_name
 }
@@ -29,6 +43,7 @@ resource "aws_route53_record" "cert_validation" {
   type    = each.value.type
   ttl     = 300
   records = [each.value.record]
+  allow_overwrite = true
 }
 
 resource "aws_acm_certificate_validation" "site" {
@@ -209,12 +224,6 @@ resource "aws_route53_record" "www_aaaa" {
   }
 }
 
-resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [var.github_oidc_thumbprint]
-}
-
 data "aws_iam_policy_document" "github_assume_role" {
   statement {
     effect  = "Allow"
@@ -222,7 +231,7 @@ data "aws_iam_policy_document" "github_assume_role" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
 
     condition {
