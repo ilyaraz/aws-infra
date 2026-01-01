@@ -1,0 +1,114 @@
+name: Terraform Plan (PR)
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      dirs: ${{ steps.changed.outputs.dirs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed infra directories
+        id: changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          head_sha="${{ github.event.pull_request.head.sha }}"
+
+          dirs=$(git diff --name-only "$base_sha" "$head_sha" | awk -F/ '/^infra\// {print $1"/"$2}' | sort -u)
+          if [ -z "$dirs" ]; then
+            echo "dirs=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          json=$(printf '%s\n' "$dirs" | jq -R -s -c 'split("\n")[:-1]')
+          echo "dirs=$json" >> "$GITHUB_OUTPUT"
+
+  plan:
+    needs: detect
+    if: ${{ needs.detect.outputs.dirs != '[]' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: ${{ fromJson(needs.detect.outputs.dirs) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ${{ matrix.dir }}
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: ${{ matrix.dir }}
+        run: terraform plan -input=false -no-color -lock-timeout=5m | tee plan.txt
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        env:
+          PLAN_FILE: ${{ matrix.dir }}/plan.txt
+          DIR: ${{ matrix.dir }}
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync(process.env.PLAN_FILE, 'utf8');
+            const max = 60000;
+            const truncated = plan.length > max;
+            const body = `<!-- tf-plan:${process.env.DIR} -->\n` +
+              `### Terraform plan for \`${process.env.DIR}\`\n\n` +
+              '```\n' + plan.slice(0, max) + '\n```\n' +
+              (truncated ? '\n_Plan output truncated._\n' : '');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const marker = `<!-- tf-plan:${process.env.DIR} -->`;
+            const existing = comments.find(c => c.user.type === 'Bot' && c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
