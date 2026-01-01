@@ -7,5 +7,5 @@ variable "aws_region" {
 variable "instance_type" {
   description = "Instance type for the sample instance."
   type        = string
-  default     = "t3.micro"
+  default     = "t3.nano"
 }
