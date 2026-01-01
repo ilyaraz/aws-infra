@@ -1,0 +1,58 @@
+name: Terraform Apply (home page)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Apply mode: dns-only creates the Route 53 zone; full applies everything."
+        type: choice
+        required: true
+        default: dns-only
+        options:
+          - dns-only
+          - full
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: terraform-apply-infra-home-page
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_TERRAFORM_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: infra/home_page
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        working-directory: infra/home_page
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.mode }}" = "dns-only" ]; then
+            terraform apply -input=false -auto-approve -lock-timeout=5m -target=aws_route53_zone.primary
+          else
+            terraform apply -input=false -auto-approve -lock-timeout=5m
+          fi
+
+      - name: Terraform Output (name servers)
+        if: always()
+        working-directory: infra/home_page
+        run: terraform output hosted_zone_name_servers || true
